@@ -22,7 +22,6 @@ class TestMLPipeline(unittest.TestCase):
             metrics = json.load(file)
 
         accuracy = metrics["accuracy"]
-
         self.assertGreaterEqual(accuracy, 0.0)
         self.assertLessEqual(accuracy, 1.0)
 
@@ -37,7 +36,6 @@ class TestMLPipeline(unittest.TestCase):
         }])
 
         prediction = model.predict(sample)[0]
-
         self.assertIn(int(prediction), [0, 1])
 
     def test_high_performance_student(self):
@@ -51,7 +49,6 @@ class TestMLPipeline(unittest.TestCase):
         }])
 
         prediction = model.predict(sample)[0]
-
         self.assertEqual(int(prediction), 1)
 
     def test_low_performance_student(self):
@@ -65,7 +62,6 @@ class TestMLPipeline(unittest.TestCase):
         }])
 
         prediction = model.predict(sample)[0]
-
         self.assertEqual(int(prediction), 0)
 
 
