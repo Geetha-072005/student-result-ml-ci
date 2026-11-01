@@ -3,8 +3,7 @@ name: Build, Test and Publish Student Result Prediction
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -13,90 +12,90 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: student-result-ml-ci
+  IMAGE_NAME: student-result-ml
 
 jobs:
   build-test-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
-      # Step 1: Checkout repository
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      # Step 2: Build Docker image
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate model artifact
+        run: python train_model.py
+
+      - name: Run ML tests
+        run: python -m unittest test_ml_pipeline.py -v
+
+      - name: Run API tests
+        run: python -m unittest test_app.py -v
+
       - name: Build Docker image
-        run: |
-          docker build --pull -t "$IMAGE_NAME:ci" .
+        run: docker build -t student-result-ml:ci .
 
-      # Step 3: Start test container
       - name: Start test container
         run: |
           docker run -d \
             --name student-result-ci \
-            -p 8000:5000 \
-            "$IMAGE_NAME:ci"
+            -p 5000:5000 \
+            student-result-ml:ci
 
-      # Step 4: Test API health endpoint
       - name: Test API health endpoint
         run: |
           for attempt in {1..20}; do
-            echo "Health check attempt: $attempt"
-
-            if curl --fail --silent --show-error \
-              --max-time 5 \
-              http://localhost:8000/health; then
-              echo "Health check passed successfully!"
+            if curl --fail --silent http://localhost:5000/health; then
+              echo "Health check passed."
               exit 0
             fi
-
-            echo "Waiting for API..."
+            echo "Waiting for API... attempt $attempt"
             sleep 3
           done
-
-          echo "Health check failed!"
+          echo "Health check failed."
           docker logs student-result-ci
           exit 1
 
-      # Step 5: Remove test container
+      - name: Test prediction endpoint
+        run: |
+          response=$(curl --fail --silent --show-error \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"attendance":90,"internal_marks":85,"assignment_marks":88,"previous_score":80}' \
+            http://localhost:5000/predict)
+          echo "Prediction response: $response"
+          echo "$response" | grep -q '"prediction":"PASS"'
+
       - name: Remove test container
         if: always()
-        run: |
-          docker rm -f student-result-ci || true
+        run: docker rm -f student-result-ci || true
 
-      # Step 6: Create lowercase GHCR image name
       - name: Create lowercase GHCR image name
         run: |
-          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_ID="${REGISTRY}/${OWNER}/${IMAGE_NAME}"
+          IMAGE_ID="${REGISTRY}/${{ github.repository_owner }}/${IMAGE_NAME}"
+          IMAGE_ID=$(echo "$IMAGE_ID" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
 
-          echo "IMAGE_ID=${IMAGE_ID}" >> "$GITHUB_ENV"
-          echo "Image name: ${IMAGE_ID}"
-
-      # Step 7: Login to GHCR
       - name: Log in to GHCR
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-          docker login ghcr.io \
-            --username "${{ github.actor }}" \
+            docker login $REGISTRY \
+            -u "${{ github.actor }}" \
             --password-stdin
 
-      # Step 8: Tag tested image
       - name: Tag tested image
         run: |
-          docker tag "$IMAGE_NAME:ci" "$IMAGE_ID:latest"
-          docker tag "$IMAGE_NAME:ci" "$IMAGE_ID:sha-${{ github.sha }}"
+          docker tag student-result-ml:ci $IMAGE_ID:latest
+          docker tag student-result-ml:ci $IMAGE_ID:sha-${{ github.sha }}
 
-      # Step 9: Push tested image to GHCR
       - name: Push tested image to GHCR
         run: |
-          docker push "$IMAGE_ID:latest"
-          docker push "$IMAGE_ID:sha-${{ github.sha }}"
-
-      # Step 10: Confirmation
-      - name: Publish confirmation
-        run: |
-          echo "Docker image published successfully!"
-          echo "$IMAGE_ID:latest"
-          echo "$IMAGE_ID:sha-${{ github.sha }}"
+          docker push $IMAGE_ID:latest
+          docker push $IMAGE_ID:sha-${{ github.sha }}
