@@ -13,7 +13,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: student-result-prediction
+  IMAGE_NAME: student-result-ml-ci
 
 jobs:
   build-test-publish:
@@ -28,15 +28,15 @@ jobs:
       # 2. Build Docker image
       - name: Build Docker image
         run: |
-          docker build --no-cache -t student-result-prediction:ci .
+          docker build --no-cache -t student-result-ml-ci:ci .
 
       # 3. Start test container
       - name: Start test container
         run: |
           docker run -d \
             --name student-result-ci \
-            -p 8000:8000 \
-            student-result-prediction:ci
+            -p 8000:5000 \
+            student-result-ml-ci:ci
 
       # 4. Check API health
       - name: Test API health endpoint
@@ -66,8 +66,7 @@ jobs:
       # 6. Prepare GHCR image name
       - name: Create lowercase GHCR image name
         run: |
-          IMAGE_ID="ghcr.io/${{ github.repository_owner }}/student-result-prediction"
-          IMAGE_ID=$(echo "$IMAGE_ID" | tr '[:upper:]' '[:lower:]')
+          IMAGE_ID="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/student-result-ml-ci"
           echo "IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
           echo "Image name: $IMAGE_ID"
 
@@ -82,8 +81,8 @@ jobs:
       # 8. Tag Docker image
       - name: Tag tested image
         run: |
-          docker tag student-result-prediction:ci "$IMAGE_ID:latest"
-          docker tag student-result-prediction:ci "$IMAGE_ID:sha-${{ github.sha }}"
+          docker tag student-result-ml-ci:ci "$IMAGE_ID:latest"
+          docker tag student-result-ml-ci:ci "$IMAGE_ID:sha-${{ github.sha }}"
 
       # 9. Push image to GHCR
       - name: Push tested image to GHCR
